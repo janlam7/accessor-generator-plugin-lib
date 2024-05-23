@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 namespace Hostnet\Component\AccessorGenerator\Twig;
 
+use Twig\Attribute\YieldReady;
 use Twig\Compiler;
 use Twig\Node\Node;
 
@@ -25,6 +26,7 @@ use Twig\Node\Node;
  *            the perline block, otherwise a Twig_Node with sub nodes of all
  *            the nodes between the prefix and/or postfix.
  */
+#[YieldReady]
 class PerLineNode extends Node
 {
     /**
@@ -59,7 +61,7 @@ class PerLineNode extends Node
         $postfix = $this->getAttribute('postfix');
         $lines   = $this->getNode('lines');
 
-        // We use normal subcompilation, which uses echo so we buffer our output.
+        // We use normal subcompilation, which uses yield so we buffer our output.
         $compiler->write("ob_start();\n");
         $compiler->subcompile($lines);
 
@@ -67,7 +69,7 @@ class PerLineNode extends Node
         $indent       = ! trim($prefix) && ! trim($postfix);   // Are we only indenting or also prefixing
 
         // Fetch the content of the lines inside of this block
-        // and itterate over them
+        // and iterate over them
         $compiler
             ->write("\$lines = explode(\"\\n\", ob_get_clean());\n")
             ->write("foreach (\$lines as \$key => \$line) {\n")
@@ -82,11 +84,11 @@ class PerLineNode extends Node
 
         // Write out the prefix for this line.
         if ($prefix) {
-            $compiler->write("echo \$key > 0 ? '$prefix' : '$ltrim_prefix' ;\n");
+            $compiler->write("yield \$key > 0 ? '$prefix' : '$ltrim_prefix' ;\n");
         }
 
         // Write the line itself
-        $compiler->write("echo \"\$line\";\n");
+        $compiler->write("yield \"\$line\";\n");
 
         // Close if statement for empty line check when indenting.
         if ($indent) {
@@ -97,7 +99,7 @@ class PerLineNode extends Node
 
         // Write postfix and new line.
         $compiler
-            ->write("echo \"$postfix\\n\";\n")
+            ->write("yield \"$postfix\\n\";\n")
             ->outdent(1)
             ->write("}\n");
     }
@@ -109,7 +111,7 @@ class PerLineNode extends Node
      */
     public function compile(Compiler $compiler): void
     {
-        // Echo line information into the generated code
+        // Yield line information into the generated code
         $compiler->addDebugInfo($this);
 
         // If there are no prefix and postfix set, usage
