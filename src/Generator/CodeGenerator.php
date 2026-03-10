@@ -334,6 +334,7 @@ class CodeGenerator implements CodeGeneratorInterface
         $imports  = $metadata['imports'];
 
         foreach ($metadata['properties'] as $info) {
+            /* @var PropertyInformation $info */
             // Check if we have anything to do. If not, continue to the next
             // property.
             if (! $info->willGenerateAdd()
@@ -353,6 +354,8 @@ class CodeGenerator implements CodeGeneratorInterface
 
             // Parse and add fully qualified type information to the info
             // object for use in doc blocks to make IDE's understand the types properly.
+//            var_dump('=============================================================================');
+//            var_dump($info);
             if ($info->isGenerator()) {
                 $info->setFullyQualifiedType(self::fqcn($info->getTypeHint(), $imports));
             }

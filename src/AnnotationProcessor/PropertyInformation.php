@@ -265,11 +265,12 @@ class PropertyInformation implements PropertyInformationInterface
         $this->parser->setIgnoreNotImportedAnnotations(true);
 
         $annotations = $this->parser->parse($this->property->getDocComment(), $filename);
-//        $attributes = $this->property->getAttributes();
-//        if (!empty($attributes)) {
-//            var_dump($attributes);
-//            die();
-//        }
+        $attributes = $this->property->getAttributes();
+        if (!empty($attributes)) {
+            foreach ($attributes as $attribute) {
+                $annotations[] = \Hostnet\Component\AccessorGenerator\Attribute\Generate::fromString($attribute);
+            }
+        }
 
         // If the property is encrypted, column type MUST be string.
         $is_encrypted = false;

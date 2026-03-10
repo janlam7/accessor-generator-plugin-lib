@@ -39,7 +39,6 @@ class GenerateAttributeProcessor implements AnnotationProcessorInterface
         if (!$annotation instanceof Generate) {
             return;
         }
-
         $info->setIsGenerator(true);
 
         if ($annotation->getEnumerators()) {
@@ -71,6 +70,7 @@ class GenerateAttributeProcessor implements AnnotationProcessorInterface
         );
 
         null === $info->getType() && $annotation->getType() && $info->setType($annotation->getType());
+        var_dump($info->getType());
         null !== $annotation->getType() && $info->setTypeHint($annotation->getType());
         null !== $annotation->getEncryptionAlias() && $info->setEncryptionAlias($annotation->getEncryptionAlias());
 

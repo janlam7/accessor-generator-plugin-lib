@@ -423,6 +423,10 @@ class ReflectionClass
         return '';
     }
 
+    /**
+     * Since the Traits might not have been generated yet, the code might not compily, and PHP build in reflection is
+     * not available since the class might not compile.
+     */
     private function parseAttributes($loc): array
     {
         $tokens = $this->getTokenStream();
