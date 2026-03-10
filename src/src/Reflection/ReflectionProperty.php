@@ -107,6 +107,12 @@ class ReflectionProperty
         return $this->doc_comment;
     }
 
+
+    public function getAttributes()
+    {
+        return $this->attributes;
+    }
+
     /**
      * Get the name of the property. The name is returned without the $-prefix.
      */

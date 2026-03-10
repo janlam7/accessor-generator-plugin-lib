@@ -1,0 +1,186 @@
+/**
+ {% if property.documentation -%}
+ {% perline %}
+ * {{ property.documentation | raw }}
+ {% endperline %}
+ {% else -%}
+ * Sets {{ property.name }}
+ {% endif -%}
+ *
+ {% if property.isNullable and not property.default -%}
+ * Generated a default null value because the doctrine column is nullable.
+ * Still require an explicit argument to set the column. If you do not like
+ * this message, specify a default value or use JoinColumn(nullable=false).
+ *
+ {% endif -%}
+ * @throws \BadMethodCallException if the number of arguments is not correct
+ {% if not property.isComplexType -%}
+ * @throws \InvalidArgumentException if value is not of the right type
+ {% endif -%}
+ {% if property.type == 'integer' -%}
+ * @throws \DomainException if the integer value is outside of the domain on this machine
+ {% endif -%}
+ {% if property.length -%}
+ * @throws \LengthException if the length of the value is to long
+ {% endif -%}
+ *
+ * @param {{ property.typeHint | phptype }} ${{ property.name }}
+ {% if property.isFixedPointNumber -%}
+ * @param bool $round round the number fit in the precision and scale (round away from zero)
+ {% endif -%}
+ *
+ * @return $this|{{ property.class }}
+ */
+{{ property.getSetVisibility() }} function set{{ property.name | classify }}(
+    {{- property.isComplexType ? property.typeHint ~ ' '-}}
+    ${{ property.name -}}
+    {%- if property.default %} = {{ property.default | raw }}
+    {%- elseif property.isNullable %} = null{% endif %}
+    {%- if property.isFixedPointNumber -%}
+    , $round = false
+    {%- endif -%}
+)
+{
+{% if property.default and property.isFixedPointNumber %}
+    if (\func_num_args() > 2) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'set{{ property.name | classify }}() has two optional arguments but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+{% elseif property.default or property.isNullable %}
+    if (\func_num_args() > 1) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'set{{ property.name | classify }}() has one optional argument but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+{% elseif property.isFixedPointNumber %}
+    if (\func_num_args() > 2) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'set{{ property.name | classify }}() has one mandatory and one optional argument but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+{% else %}
+    if (\func_num_args() !== 1) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'set{{ property.name | classify }}() has one argument but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+{% endif %}
+{# scalar or build-in type (integer, float, string, array, object, resource) #}
+{%- if not property.isComplexType %}
+{% if property.isNullable %}
+
+    if (${{ property.name }} === null) {
+        $this->{{ property.name }} = ${{ property.name }};
+        return $this;
+    }
+{% endif %}
+{% if property.type == 'integer' %}
+
+    {% perline %}
+    {% include 'integer.php.twig' with {'skip_check_type' : false, 'var' : '$' ~ property.name }%}
+    {% endperline %}
+{% elseif property.isFixedPointNumber %}
+
+    {% perline %}
+    {% include 'decimal.php.twig' %}
+    {% endperline %}
+{% elseif property.type == 'string' %}
+
+    if (${{ property.name }} === null
+        || \is_scalar(${{ property.name }})
+        || \is_callable([${{ property.name }}, '__toString'])
+    ) {
+        ${{ property.name }} = (string)${{ property.name }};
+    } else {
+        throw new \InvalidArgumentException(
+            'Parameter {{ property.name }} must be convertible to string.'
+        );
+    }
+{% else %}
+
+    if (!\is_{{ property.type == 'boolean' ? 'bool' : property.type }}(${{ property.name }})) {
+        throw new \InvalidArgumentException(
+            'Parameter {{ property.name }} must be {{ property.type }}.'
+        );
+    }
+{% endif %}
+{% endif %}
+{% if property.length %}
+
+    if (\strlen(${{ property.name }}) > {{ property.length }}) {
+        throw new \LengthException('Parameter \'${{ property.name }}\' should not be longer than {{ property.length }} characters.');
+    }
+{% endif %}
+{% if property.referencedProperty %}
+    // Create reflection property.
+    $property = new \ReflectionProperty({{ property.type }}::class, '{{ property.referencedProperty }}');
+    $property->setAccessible(true);
+
+{% if property.isReferencingCollection %}
+    // Unset old value and set the new value
+    if ($this->{{ property.name }}) {
+        $value = $property->getValue($this->{{ property.name }});
+        $value && $value->removeElement($this);
+    }
+
+    // keeping the inverse side up-to-date.
+    if (${{ property.name }}) {
+        $value = $property->getValue(${{ property.name }});
+        if ($value) {
+            ${{ property.name }} && $value->add($this);
+        } else {
+            $property->setValue(${{ property.name }}, new \Doctrine\Common\Collections\ArrayCollection([$this]));
+        }
+    }
+{% else %}
+    // Unset old value and set the new value to keep the inverse side in sync.
+    $this->{{ property.name }} && $property->setValue($this->{{ property.name }}, null);
+    ${{ property.name }} && $property->setValue(${{ property.name }}, $this);
+{% endif %}
+
+    // Update the accessible flag to disallow further again.
+    $property->setAccessible(false);
+{% endif %}
+
+{% if property.encryptionAlias() %}
+    if (false == ($public_key_path = KeyRegistry::getPublicKeyPath('{{ property.encryptionAlias() }}'))) {
+        throw new \InvalidArgumentException('A public key path must be set to use this method.');
+    }
+
+    if (false === ($public_key = openssl_get_publickey($public_key_path))) {
+        throw new \InvalidArgumentException(sprintf('The path "%s" does not contain a public key.', $public_key_path));
+    }
+
+    $iv = openssl_random_pseudo_bytes(32);
+    if (false === openssl_seal(${{ property.name }}, $sealed_data, $env_keys, [$public_key], 'AES256', $iv)) {
+        $err_string = '';
+        while ($msg = openssl_error_string()) {
+            $err_string .= $msg . ' | ';
+        }
+        throw new \InvalidArgumentException(sprintf('openssl_seal failed. Message: %s', $err_string));
+    }
+
+    $env_key        = bin2hex($env_keys[0]);
+    $iv             = bin2hex($iv);
+    $sealed_data    = bin2hex($sealed_data);
+
+    $this->{{ property.name }} = sprintf('%d,%d,%s%s%s', \strlen($env_key), \strlen($iv), $env_key, $iv, $sealed_data);
+{% else %}
+    $this->{{ property.name }} = ${{ property.name }};
+{% endif %}
+
+    return $this;
+}

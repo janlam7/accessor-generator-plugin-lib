@@ -1,0 +1,96 @@
+/**
+ {% if property.documentation -%}
+ {% perline %}
+ * {{ property.documentation | raw }}
+ {% endperline %}
+ {% else -%}
+ * Adds the given {{ property.name | singularize }} to this collection.
+ {% endif -%}
+ *
+ * @throws \BadMethodCallException if the number of arguments is not correct.
+ {% if not property.isReferencingCollection -%}
+ * @throws \LogicException         if a member was added that already exists within the collection.
+ {% endif -%}
+ {% if property.referencedProperty -%}
+ * @throws \Hostnet\Component\AccessorGenerator\Exception\MissingPropertyException
+ {% endif -%}
+ *
+ * @param {{ property.typeHint}} ${{ property.name | singularize }}
+ *
+ * @return $this|{{ property.class }}
+ */
+{{ property.getAddVisibility() }} function add{{ property.name | singularize | classify }}({{ property.typeHint }} ${{ property.name | singularize }})
+{
+    if (\func_num_args() !== 1) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'add{{ property.name | classify }}() has one argument but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+
+    /* @var $this->{{ property.name }} \Doctrine\Common\Collections\ArrayCollection */
+    if ($this->{{ property.name}} === null) {
+        $this->{{ property.name}} = new \Doctrine\Common\Collections\ArrayCollection();
+    } elseif ($this->{{ property.name}}->contains(${{ property.name | singularize }})) {
+        return $this;
+    }
+
+{% if property.index %}
+    $reflection_index = new \ReflectionProperty({{ property.type }}::class, '{{ property.index }}');
+    $reflection_index->setAccessible(true);
+    $index = $reflection_index->getValue(${{ property.name | singularize }});
+    $reflection_index->setAccessible(false);
+    if ($this->{{ property.name}}->containsKey($index)) {
+        throw new \LogicException(sprintf('index {{ property.index }} with value "%s" is already taken, meaning the index is not unique!', $index));
+    }
+    $this->{{ property.name}}->set($index, ${{ property.name | singularize }});
+{% else %}
+    $this->{{ property.name}}->add(${{ property.name | singularize }});
+{% endif %}
+{% if property.referencedProperty %}
+    try {
+{% if property.type == property.typeHint %}
+        $property = new \ReflectionProperty({{ property.type }}::class, '{{ property.referencedProperty }}');
+{% else %}
+        if (${{ property.name | singularize }} instanceof {{ property.type }}) {
+            $property = new \ReflectionProperty({{ property.type }}::class, '{{ property.referencedProperty }}');
+        } else {
+            $property = new \ReflectionProperty(${{ property.name | singularize }}, '{{ property.referencedProperty }}');
+        }
+{% endif %}
+    } catch (\ReflectionException $e) {
+        throw new \Hostnet\Component\AccessorGenerator\Exception\MissingPropertyException(
+            $e->getMessage(),
+            $e->getCode(),
+            $e
+        );
+    }
+    $property->setAccessible(true);
+{% if property.isReferencingCollection %}
+    if (method_exists({{ property.type }}::class, 'add{{ property.referencedProperty | singularize | classify}}')) {
+        $adder = new \ReflectionMethod({{ property.type }}::class, 'add{{ property.referencedProperty | singularize | classify}}');
+        $adder->setAccessible(true);
+        $adder->invoke(${{ property.name | singularize }}, $this);
+        $adder->setAccessible(false);
+    } else {
+        $collection = $property->getValue(${{ property.name | singularize }});
+        if (!$collection) {
+            $collection = new \Doctrine\Common\Collections\ArrayCollection();
+            $property->setValue(${{ property.name | singularize }}, $collection);
+        }
+        $collection->add($this);
+    }
+{% else %}
+    $value = $property->getValue(${{ property.name | singularize }});
+    if ($value && $value !== $this) {
+        throw new \LogicException('{{ property.name | singularize | classify }} can not be added to more than one {{ property.class }}.');
+    }
+    $property->setValue(${{ property.name | singularize }}, $this);
+{% endif %}
+    $property->setAccessible(false);
+{% endif %}
+
+    return $this;
+}

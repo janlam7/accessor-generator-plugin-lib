@@ -1,0 +1,126 @@
+/**
+ {% if property.documentation -%}
+ {% perline %}
+ * {{ property.documentation | raw}}
+ {% endperline %}
+ {% else -%}
+ * {{  property.type == 'boolean' ? 'Returns true if' : 'Gets' }} {{ property.name }}
+ {% endif -%}
+ *
+ {% if property.willGenerateStrict and property.isComplexType and not property.isNullable and property.type != '\\DateTime' -%}
+ * @throws \Doctrine\ORM\EntityNotFoundException
+ {% endif -%}
+ * @throws \BadMethodCallException
+ {% if property.willGenerateStrict and not property.isNullable -%}
+ * @throws \LogicException
+ {% endif -%}
+ *
+ {% if property.collection -%}
+ * @return {{ property.fullyQualifiedType }}[]|ImmutableCollection
+ {% else -%}
+ * @return {{ (property.isComplexType ? property.typeHint : property.type) | phptype }}{{ property.isNullable or not property.willGenerateStrict ? '|null' }}
+ {% endif -%}
+ */
+{{ property.getGetVisibility() }} function {{ getter }}(){% if property.type != 'resource' and property.type != 'object' %}: {% if property.collection -%} iterable
+{% else -%}{{ property.isNullable or not property.willGenerateStrict ? '?' }}{{ (property.isComplexType ? property.typeHint : property.type) | phptype }}
+{% endif %}{% else %}
+
+{% endif %}
+{
+    if (\func_num_args() > 0) {
+        throw new \BadMethodCallException(
+            sprintf(
+                '{{ getter }}() has no arguments but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+{% if not property.isComplexType  or property.typeHint == '\\DateTime' %}
+{% if property.willGenerateStrict and not property.isNullable %}
+    if ($this->{{ property.name }} === null) {
+        throw new \LogicException(sprintf(
+            'Property {{ property.name }} is null, but the column is not nullable, '.
+            'make sure your object is initialized in such a way the properties are in '.
+            'a valid state, for example by using a proper constructor. If you want to ' .
+            'test if an object is new for the database please consult the UnitOfWork.' .
+            'It could also be that your column in the code is not set to be nullable ' .
+            'and it currently contains a NULL-value in the database.'
+        ));
+    }
+{% endif %}
+{% if (not property.willGenerateStrict or property.isNullable) %}
+
+    if ($this->{{ property.name }} === null) {
+        return null;
+    }
+{% endif %}
+{% endif %}
+{% if property.type == 'integer' %}
+
+    {% perline %}
+    {% include 'integer.php.twig' with {'skip_check_type' : true, 'var' : '$this->' ~ property.name }%}
+    {% endperline %}
+{% endif -%}
+{% if property.collection %}
+
+    if ($this->{{ property.name }} === null) {
+        $this->{{ property.name }} = new \Doctrine\Common\Collections\ArrayCollection();
+    }
+{% elseif property.willGenerateStrict and property.isComplexType and not property.isNullable and property.type != '\\DateTime' %}
+
+    if ($this->{{ property.name }} === null) {
+        throw new \Doctrine\ORM\EntityNotFoundException('Missing required property "{{ property.name }}".');
+    }
+{% endif %}
+
+{% if property.encryptionAlias() %}
+    if (false == ($private_key_path = KeyRegistry::getPrivateKeyPath('{{ property.encryptionAlias() }}'))) {
+        throw new \InvalidArgumentException('A private key path must be set to use this method.');
+    }
+
+    $decrypt = function ($private_key_path) {
+        if (false === ($private_key = openssl_get_privatekey($private_key_path))) {
+            throw new \InvalidArgumentException(sprintf('The path "%s" does not contain a private key.', $private_key_path));
+        }
+
+        list($env_key_length, $iv_length, $pieces) = explode(',', $this->{{ property.name }}, 3);
+        $env_key                                   = hex2bin(substr($pieces, 0, $env_key_length));
+        $iv                                        = hex2bin(substr($pieces, $env_key_length, $iv_length));
+        $sealed_data                               = hex2bin(substr($pieces, $env_key_length + $iv_length));
+
+        if (false === openssl_open($sealed_data, $open_data, $env_key, $private_key, 'AES256', $iv)) {
+            $err_string = '';
+            while ($msg = openssl_error_string()) {
+                $err_string .= $msg . ' | ';
+            }
+            throw new \InvalidArgumentException(sprintf('openssl_open failed. Message: %s', $err_string));
+        }
+
+        return $open_data;
+    };
+
+    try {
+        return $decrypt($private_key_path);
+    } catch (\InvalidArgumentException $e) {
+        if (false == ($fallback_private_key_path = KeyRegistry::getPrivateKeyPath('{{ property.encryptionAlias() }}_fallback'))) {
+            throw $e;
+        }
+
+        try {
+            return $decrypt($fallback_private_key_path);
+        } catch (\InvalidArgumentException $fallback_exception) {
+            throw new \InvalidArgumentException(sprintf(
+                "Decryption failed: [%s]\nFallback also failed: [%s]",
+                $e->getMessage(),
+                $fallback_exception->getMessage()
+            ), 0, $e);
+        }
+    }
+{% elseif property.type == 'integer' %}
+    return (int) $this->{{ property.name }};
+{% elseif property.collection %}
+    return new ImmutableCollection($this->{{ property.name }});
+{% else %}
+    return $this->{{ property.name }};
+{% endif %}
+}

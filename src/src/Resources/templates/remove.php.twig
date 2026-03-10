@@ -1,0 +1,50 @@
+/**
+ {% if property.documentation -%}
+ {% perline %}
+ * {{ property.documentation | raw }}
+ {% endperline %}
+ {% else -%}
+ * Removes the given {{ property.name | singularize }} from this collection.
+ {% endif -%}
+ *
+ * @throws \BadMethodCallException if the number of arguments is not correct
+ *
+ * @param {{ property.typeHint }} ${{ property.name | singularize }}
+ *
+ * @return $this|{{ property.class }}
+ */
+{{ property.getRemoveVisibility() }} function remove{{ property.name | singularize | classify }}({{ property.typeHint }} ${{ property.name | singularize }})
+{
+    if (\func_num_args() !== 1) {
+        throw new \BadMethodCallException(
+            sprintf(
+                'remove{{ property.name | classify }}() has one argument but %d given.',
+                \func_num_args()
+            )
+        );
+    }
+
+    if (! $this->{{ property.name}} instanceof \Doctrine\Common\Collections\Collection
+        || ! $this->{{ property.name}}->contains(${{ property.name | singularize }})
+    ) {
+        return $this;
+    }
+
+    $this->{{ property.name}}->removeElement(${{ property.name | singularize }});
+
+{% if property.referencedProperty %}
+    $property = new \ReflectionProperty({{ property.type }}::class, '{{ property.referencedProperty }}');
+    $property->setAccessible(true);
+{% if property.isReferencingCollection %}
+    $collection = $property->getValue(${{ property.name | singularize }});
+    if ($collection) {
+        $collection->removeElement($this);
+    }
+{% else %}
+    $property->setValue(${{ property.name | singularize }}, null);
+{% endif %}
+    $property->setAccessible(false);
+{% endif %}
+
+    return $this;
+}
